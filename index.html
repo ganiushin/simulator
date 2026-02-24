@@ -363,6 +363,18 @@
         .simulator-controls button:hover {
             background: #764ba2;
         }
+
+        #btnRobotButton {
+            font-size: 1.05em;
+            padding: 10px 24px;
+            background: #ff9800;
+            border-radius: 12px;
+            font-weight: bold;
+        }
+
+        #btnRobotButton:hover {
+            background: #fb8c00;
+        }
         
         .simulator-controls .hint-text {
             width: 100%;
@@ -494,6 +506,7 @@
     <div class="container">
         <div class="header">
             <h1>🤖 Olympic Robot v4.0</h1>
+            <p>Симулятор и редактор карты для учебного робота.</p>
         </div>
         
         <div class="content">
@@ -511,11 +524,21 @@
                         <strong>Размер:</strong> <span id="fileSize"></span> байт
                     </div>
                 </div>
+                <div class="upload-section" id="mapUploadSection">
+                    <h2>🗺 Загрузка карты</h2>
+                    <p>Перетащите .json сюда или нажмите кнопку</p>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="mapFileInput" accept=".json,application/json">
+                        <div class="file-input-button">Выбрать карту</div>
+                    </div>
+                    <div class="file-info" id="mapFileInfo">
+                        <strong>Карта:</strong> <span id="mapFileName"></span>
+                    </div>
+                </div>
                 <div class="actions">
                     <button class="action-button simulator" id="btnSimulator" disabled>
                         🎮 Запустить симулятор
                     </button>
-<!-- Removed Bluetooth button -->
                     <button class="action-button" id="btnMapEditor">
                         🗺 Редактор карты
                     </button>
@@ -526,25 +549,32 @@
             <div class="panel-center">
                 <div class="placeholder-center" id="placeholderCenter">
                     <span class="icon">🤖</span>
-                    <p>Загрузите Python-скрипт слева, затем запустите симулятор или откройте редактор карты.</p>
+                    <p><strong>Перед запуском симулятора сделайте три шага:</strong></p>
+                    <ol style="margin-top:8px; text-align:left; max-width:420px;">
+                        <li><strong>Слева в блоке «Загрузка скрипта»</strong> выберите файл <code>.py</code> со своим кодом.</li>
+                        <li><strong>Слева в блоке «Загрузка карты»</strong> выберите файл карты <code>.json</code> <em>или</em> откройте «🗺 Редактор карты», нарисуйте трассу и нажмите «💾 Сохранить».</li>
+                        <li>Когда выбран и скрипт, и карта, кнопка <strong>«🎮 Запустить симулятор»</strong> станет активной — нажмите её.</li>
+                    </ol>
+                    <p style="margin-top:8px; max-width:420px;">
+                        В симуляторе для начала движения нажмите большую кнопку <strong>«Старт робота (B)»</strong> или клавишу <kbd>B</kbd>, если ваш скрипт ждёт нажатия кнопки.
+                    </p>
                 </div>
                 <div class="simulator-container" id="simulatorContainer">
                     <div class="simulator-canvas-wrap">
                         <canvas id="simulatorCanvas" width="800" height="600"></canvas>
                     </div>
                     <div class="simulator-controls">
-                        <button id="btnStart">▶ Старт</button>
-                        <button id="btnPause">⏸ Пауза</button>
                         <button id="btnReset">🔄 Сброс</button>
-                        <button id="btnRobotButton">🔘 Кнопка (B)</button>
+                        <button id="btnRobotButton">🔘 Старт робота (B)</button>
                         <button id="btnClose">✖ Закрыть</button>
-                        <p class="hint-text">После «Старт» нажмите «Кнопка (B)» или клавишу B — робот начнёт движение.</p>
+                        <p class="hint-text">Симулятор сам запускает скрипт. Если в скрипте есть ожидание кнопки, нажмите кнопку B или клавишу B.</p>
                     </div>
                 </div>
                 <div class="map-editor-container" id="mapEditorContainer">
                     <h2>🗺 Редактор карты</h2>
                     <div class="map-editor-toolbar">
                         <button type="button" class="tool-btn active" data-tool="pencil" id="toolPencil">✏️ Полосы</button>
+                        <button type="button" class="tool-btn" data-tool="line" id="toolLine">📏 Прямая</button>
                         <button type="button" class="tool-btn" data-tool="green" id="toolGreen">🟢 GREEN</button>
                         <button type="button" class="tool-btn" data-tool="red" id="toolRed">🔴 RED</button>
                         <button type="button" class="tool-btn" data-tool="right" id="toolRight">↪️ RIGHT</button>
@@ -578,7 +608,8 @@
                 <div class="tips-box">
                     <strong>Подсказки v4.0</strong>
                     <ul>
-                        <li><strong>Максимально простой синтаксис:</strong> Используйте <code>def run_robot(bot):</code></li>
+                        <li><strong>Функция входа:</strong> Используйте <code>def run_robot(bot):</code></li>
+                        <li><strong>Задержки:</strong> Вызов <code>bot.sleep(seconds)</code></li>
                         <li><strong>Совместимость:</strong> Код работает одинаково в браузере и на реальном роботе</li>
                         <li>Клавиша <kbd>B</kbd> — кнопка робота в симуляторе</li>
                         <li>Карта из редактора подхватывается симулятором после «Сохранить»</li>

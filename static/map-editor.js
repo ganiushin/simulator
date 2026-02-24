@@ -18,6 +18,7 @@
     let brushSize = 12;
     let isDrawing = false;
     let lastX, lastY;
+    let lineStartX = null, lineStartY = null;
 
     function getCanvasCoords(e) {
         const rect = canvas.getBoundingClientRect();
@@ -195,6 +196,10 @@
             const r = Math.max(1, Math.floor(brushSize / 2));
             drawBlackCircle(x, y, r);
             redraw();
+        } else if (currentTool === 'line') {
+            isDrawing = true;
+            lineStartX = x;
+            lineStartY = y;
         } else if (currentTool === 'eraser') {
             const hitRadius = 30;
             if (startPosition && Math.hypot(x - startPosition.x, y - startPosition.y) < hitRadius) {
@@ -258,9 +263,19 @@
             lastY = y;
             redraw();
         }
+        // Для инструмента "прямая" можно было бы рисовать превью,
+        // но сейчас линия появляется только при отпускании кнопки.
     }
 
-    function onMouseUp() {
+    function onMouseUp(e) {
+        if (currentTool === 'line' && isDrawing && lineStartX != null && lineStartY != null) {
+            const { x, y } = getCanvasCoords(e);
+            const r = Math.max(1, Math.floor(brushSize / 2));
+            drawLine(lineStartX, lineStartY, x, y, r);
+            redraw();
+            lineStartX = null;
+            lineStartY = null;
+        }
         isDrawing = false;
     }
 
@@ -293,6 +308,8 @@
             ultrasonicObstacles: ultrasonicObstacles.map(obs => ({ x: obs.x, y: obs.y, radius: obs.radius || 30 })),
             startPosition: startPosition ? { x: startPosition.x, y: startPosition.y, angle: startPosition.angle } : null
         };
+        // Отмечаем, что карта выбрана (для main.js)
+        window.mapSelected = true;
         // Останавливаем симулятор, если он запущен, но не удаляем его полностью
         // Это позволит обновить карту при следующем запуске
         if (window.simulator) {
@@ -454,6 +471,8 @@
                     ultrasonicObstacles: ultrasonicObstacles.map(obs => ({ x: obs.x, y: obs.y, radius: obs.radius || 30 })),
                     startPosition: startPosition ? { x: startPosition.x, y: startPosition.y, angle: startPosition.angle } : null
                 };
+                // Отмечаем, что карта выбрана (для main.js)
+                window.mapSelected = true;
                 // Останавливаем симулятор, если он запущен, но не удаляем его полностью
                 // Это позволит обновить карту при следующем запуске
                 if (window.simulator) {

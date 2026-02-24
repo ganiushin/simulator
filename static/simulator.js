@@ -871,12 +871,38 @@ except Exception as e:
         
         this.ctx.fillStyle = '#329966';
         this.ctx.fillRect(-20, -15, 40, 30);
-        
+
+        // Колёса
         this.ctx.fillStyle = '#000000';
         this.ctx.fillRect(-15, -18, 12, 6);
         this.ctx.fillRect(3, -18, 12, 6);
         this.ctx.fillRect(-15, 12, 12, 6);
         this.ctx.fillRect(3, 12, 12, 6);
+
+        // Кнопка робота на корпусе (по центру зелёного прямоугольника)
+        const isPressed = this.buttonState && this.buttonState._pressed;
+        const btnRadiusOuter = 7;
+        const btnRadiusInner = isPressed ? 4 : 5;
+        const btnX = 8;
+        const btnY = isPressed ? 0 : 1;
+
+        // Внешний контур кнопки
+        this.ctx.beginPath();
+        this.ctx.arc(btnX, btnY, btnRadiusOuter, 0, Math.PI * 2);
+        this.ctx.fillStyle = isPressed ? '#555555' : '#808080';
+        this.ctx.fill();
+
+        // Внутренняя часть кнопки (цвет по состоянию)
+        this.ctx.beginPath();
+        this.ctx.arc(btnX, btnY - (isPressed ? 1 : 2), btnRadiusInner, 0, Math.PI * 2);
+        this.ctx.fillStyle = isPressed ? '#ff5252' : '#ffeb3b';
+        this.ctx.fill();
+
+        // Блик на кнопке, чтобы выглядела объёмной
+        this.ctx.beginPath();
+        this.ctx.arc(btnX - 2, btnY - (isPressed ? 3 : 4), 2, 0, Math.PI * 2);
+        this.ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        this.ctx.fill();
         
         const sensors = [
             {x: 22, y: -12, val: this.sensors.lineLeft},
