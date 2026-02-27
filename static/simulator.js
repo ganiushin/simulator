@@ -34,8 +34,7 @@ class RobotSimulator {
             lineLeft: 0,
             lineCenter: 0,
             lineRight: 0,
-            ultrasonic: 400,
-            photoresistor: 0,
+            sharp: 80,
             camera: null,
             leftEncoder: 0,
             rightEncoder: 0
@@ -48,6 +47,7 @@ class RobotSimulator {
         this.scriptRunning = false;
         this.shouldStopScript = false;
         this.lastSleepPromise = null;
+        this.waitingForStartButton = false;
         
         this.map = {
             width: MAP_WIDTH,
@@ -62,7 +62,7 @@ class RobotSimulator {
             x: Number(z.x) || 0,
             y: Number(z.y) || 0,
             radius: (Number(z.radius) > 0 ? Number(z.radius) : 25),
-            sign: z.sign != null ? String(z.sign) : ""
+            sign: z.sign != null ? (z.sign === 'GREEN' ? 'GO' : String(z.sign)) : ""
         }));
         
         this.initMap();
@@ -138,16 +138,6 @@ class RobotSimulator {
 
         this.initMapRoadPolygon(mapCtx);
 
-        const lampX = MAP_WIDTH / 2, lampY = Math.round(MAP_HEIGHT * 0.283);
-        const k = Math.min(MAP_WIDTH, MAP_HEIGHT) / 600;
-        mapCtx.fillStyle = '#ffff00';
-        mapCtx.beginPath();
-        mapCtx.arc(lampX, lampY, Math.round(14 * k), 0, Math.PI * 2);
-        mapCtx.fill();
-        mapCtx.strokeStyle = '#333';
-        mapCtx.lineWidth = 2;
-        mapCtx.stroke();
-
         this.map.imageData = mapCtx.getImageData(0, 0, MAP_WIDTH, MAP_HEIGHT);
     }
     
@@ -170,7 +160,17 @@ class RobotSimulator {
                 }
             },
             button: {
-                is_pressed: () => buttonState._pressed
+                get _pressed() { return buttonState._pressed; },
+                set _pressed(v) { buttonState._pressed = v; },
+                is_pressed: () => buttonState._pressed,
+                pressButton: () => {
+                    buttonState._pressed = true;
+                    if (self.waitingForStartButton) {
+                        self.waitingForStartButton = false;
+                        self.runScript();
+                    }
+                },
+                releaseButton: () => { buttonState._pressed = false; }
             },
             leds: {
                 pixels: [[255,165,0], [255,165,0], [255,165,0], [255,165,0]],
@@ -185,8 +185,10 @@ class RobotSimulator {
             line_left: { read: () => self.sensors.lineLeft },
             line_sensor: { read: () => self.sensors.lineCenter },
             line_right: { read: () => self.sensors.lineRight },
-            ultrasonic: { distance_cm: () => self.sensors.ultrasonic },
-            photoresistor: { read: () => self.sensors.photoresistor },
+            sharp: {
+                distance_cm: () => self.sensors.sharp,
+                read: () => Math.round(Math.max(0, Math.min(4095, 4095 * (80 - self.sensors.sharp) / 80)))
+            },
             left_encoder: { read: () => Math.round(self.sensors.leftEncoder || 0) },
             right_encoder: { read: () => Math.round(self.sensors.rightEncoder || 0) },
             camera: {
@@ -218,7 +220,7 @@ class RobotSimulator {
             x: Number(z.x) || 0,
             y: Number(z.y) || 0,
             radius: (Number(z.radius) > 0 ? Number(z.radius) : 25),
-            sign: z.sign != null ? String(z.sign) : ""
+            sign: z.sign != null ? (z.sign === 'GREEN' ? 'GO' : String(z.sign)) : ""
         }));
         
         if (this.customMapData && this.customMapData.startPosition) {
@@ -237,7 +239,7 @@ class RobotSimulator {
         }
     }
     
-    async start() {
+    async start(options = {}) {
         if (this.running) return;
         
         if (this.scriptRunning) {
@@ -260,8 +262,11 @@ class RobotSimulator {
         this.shouldStopScript = false;
         this.reset();
         this.scriptRunning = false;
+        this.waitingForStartButton = !(options.skipStartButton);
         
-        this.runScript();
+        if (options.skipStartButton) {
+            this.runScript();
+        }
         
         requestAnimationFrame(() => this.animate());
     }
@@ -338,8 +343,10 @@ class RobotSimulator {
             line_left: { read: () => self.sensors.lineLeft },
             line_sensor: { read: () => self.sensors.lineCenter },
             line_right: { read: () => self.sensors.lineRight },
-            ultrasonic: { distance_cm: () => self.sensors.ultrasonic },
-            photoresistor: { read: () => self.sensors.photoresistor },
+            sharp: {
+                distance_cm: () => self.sensors.sharp,
+                read: () => Math.round(Math.max(0, Math.min(4095, 4095 * (80 - self.sensors.sharp) / 80)))
+            },
             left_encoder: { read: () => Math.round(self.sensors.leftEncoder || 0) },
             right_encoder: { read: () => Math.round(self.sensors.rightEncoder || 0) },
             camera: { detect_sign: () => { const v = self.sensors.camera; return v != null ? String(v) : null; } },
@@ -403,8 +410,7 @@ class Bot:
         self.line_left = bot_api.line_left
         self.line_sensor = bot_api.line_sensor
         self.line_right = bot_api.line_right
-        self.ultrasonic = bot_api.ultrasonic
-        self.photoresistor = bot_api.photoresistor
+        self.sharp = bot_api.sharp
         self.left_encoder = bot_api.left_encoder
         self.right_encoder = bot_api.right_encoder
         self.camera = bot_api.camera
@@ -627,7 +633,8 @@ except Exception as e:
                     }
                 }
                 const brightness = count ? sum / count : 255;
-                return brightness < 120 ? 4095 : 0;
+                // Белый (трасса) = 4095, чёрный (ограждение) = 0
+                return brightness < 120 ? 0 : 4095;
             };
             
             const rad = this.robot.angle * Math.PI / 180;
@@ -647,7 +654,7 @@ except Exception as e:
             this.sensors.lineRight = checkAt(rightX, rightY);
         }
         
-        this.sensors.ultrasonic = this.getUltrasonicDistance();
+        this.sensors.sharp = this.getSharpDistance();
         
         this.sensors.camera = null;
         const rx = this.robot.x, ry = this.robot.y;
@@ -659,91 +666,39 @@ except Exception as e:
                 break;
             }
         }
-        
-        this.sensors.photoresistor = 0;
-        const lampList = this.customMapData && this.customMapData.lamps && Array.isArray(this.customMapData.lamps) && this.customMapData.lamps.length > 0
-            ? this.customMapData.lamps
-            : [{ x: MAP_WIDTH / 2, y: Math.round(MAP_HEIGHT * 0.283), radius: Math.round(120 * (Math.min(MAP_WIDTH, MAP_HEIGHT) / 600)) }];
-        for (const lamp of lampList) {
-            const lx = Number(lamp.x), ly = Number(lamp.y), lr = Number(lamp.radius) > 0 ? Number(lamp.radius) : 120;
-            if (!Number.isFinite(lx) || !Number.isFinite(ly)) continue;
-            const distToLamp = Math.hypot(this.robot.x - lx, this.robot.y - ly);
-            if (distToLamp < lr) {
-                const value = Math.floor(4095 * (1 - distToLamp / lr));
-                if (value > this.sensors.photoresistor) this.sensors.photoresistor = value;
-            }
-        }
     }
     
-    getUltrasonicDistance() {
+    getSharpDistance() {
         const x = this.robot.x;
         const y = this.robot.y;
         const angle = this.robot.angle * Math.PI / 180;
-        const maxDist = 400;
-        const stepSize = 3;
-        const fov = 25 * Math.PI / 180;
+        const maxDist = 80;
+        const stepSize = 2;
+        const dx = Math.cos(angle);
+        const dy = -Math.sin(angle);
         
-        let minDist = maxDist;
+        if (!this.map.imageData) return maxDist;
         
-        const obstacles = this.customMapData && this.customMapData.ultrasonicObstacles && Array.isArray(this.customMapData.ultrasonicObstacles)
-            ? this.customMapData.ultrasonicObstacles
-            : [];
-        
-        for (let da = -fov; da <= fov; da += fov / 5) {
-            const rayAngle = angle + da;
-            const dx = Math.cos(rayAngle);
-            const dy = -Math.sin(rayAngle);
-            let rayMinDist = maxDist;
+        const data = this.map.imageData.data;
+        for (let dist = 0; dist < maxDist; dist += stepSize) {
+            const cx = Math.floor(x + dx * dist);
+            const cy = Math.floor(y + dy * dist);
             
-            for (const obs of obstacles) {
-                const ox = Number(obs.x) || 0;
-                const oy = Number(obs.y) || 0;
-                const or = Number(obs.radius) || 30;
-                
-                const toObstacleX = ox - x;
-                const toObstacleY = oy - y;
-                const distToCenter = Math.hypot(toObstacleX, toObstacleY);
-                
-                const proj = toObstacleX * dx + toObstacleY * dy;
-                
-                if (proj > 0) {
-                    const distToRay = Math.sqrt(distToCenter * distToCenter - proj * proj);
-                    
-                    if (distToRay <= or) {
-                        const distToObstacle = proj - Math.sqrt(or * or - distToRay * distToRay);
-                        if (distToObstacle >= 0 && distToObstacle < rayMinDist) {
-                            rayMinDist = distToObstacle;
-                        }
-                    }
-                }
+            if (cx < 0 || cx >= MAP_WIDTH || cy < 0 || cy >= MAP_HEIGHT) {
+                return dist;
             }
             
-            if (rayMinDist >= maxDist && this.map.imageData) {
-                for (let dist = 0; dist < maxDist; dist += stepSize) {
-                    const cx = Math.floor(x + dx * dist);
-                    const cy = Math.floor(y + dy * dist);
-                    
-                    if (cx < 0 || cx >= MAP_WIDTH || cy < 0 || cy >= MAP_HEIGHT) {
-                        rayMinDist = Math.min(rayMinDist, dist);
-                        break;
-                    }
-                    
-                    const idx = (cy * MAP_WIDTH + cx) * 4;
-                    const r = this.map.imageData.data[idx];
-                    const g = this.map.imageData.data[idx + 1];
-                    const b = this.map.imageData.data[idx + 2];
-                    
-                    if (r > 150 && g < 100 && b < 100) {
-                        rayMinDist = Math.min(rayMinDist, dist);
-                        break;
-                    }
-                }
-            }
+            const idx = (cy * MAP_WIDTH + cx) * 4;
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+            const brightness = (r + g + b) / 3;
             
-            minDist = Math.min(minDist, rayMinDist);
+            if (brightness < 120) {
+                return dist;
+            }
         }
-        
-        return minDist;
+        return maxDist;
     }
     
     draw() {
@@ -758,12 +713,15 @@ except Exception as e:
             this.cameraZones.forEach(z => {
                 const zx = Number(z.x), zy = Number(z.y), zr = Number(z.radius) || 25;
                 if (!Number.isFinite(zx) || !Number.isFinite(zy) || zr <= 0) return;
-                if (z.sign === 'GREEN') {
+                if (z.sign === 'GO') {
                     this.ctx.fillStyle = 'rgba(0, 200, 0, 0.35)';
                     this.ctx.strokeStyle = '#00aa00';
                 } else if (z.sign === 'STOP') {
                     this.ctx.fillStyle = 'rgba(220, 0, 0, 0.35)';
                     this.ctx.strokeStyle = '#cc0000';
+                } else if (z.sign === 'LEFT') {
+                    this.ctx.fillStyle = 'rgba(0, 100, 255, 0.35)';
+                    this.ctx.strokeStyle = '#0066cc';
                 } else if (z.sign === 'RIGHT') {
                     this.ctx.fillStyle = 'rgba(255, 200, 0, 0.35)';
                     this.ctx.strokeStyle = '#cc9900';
@@ -780,41 +738,8 @@ except Exception as e:
                 this.ctx.font = 'bold 14px Arial';
                 this.ctx.textAlign = 'center';
                 this.ctx.textBaseline = 'middle';
-                const label = z.sign === 'RIGHT' ? 'R' : z.sign === 'STOP' ? 'S' : z.sign === 'GREEN' ? 'G' : z.sign || '?';
+                const label = z.sign === 'RIGHT' ? 'R' : z.sign === 'STOP' ? 'S' : z.sign === 'GO' ? 'G' : z.sign === 'LEFT' ? 'L' : z.sign || '?';
                 this.ctx.fillText(label, zx, zy);
-            });
-        }
-        
-        if (this.customMapData && this.customMapData.ultrasonicObstacles && Array.isArray(this.customMapData.ultrasonicObstacles) && this.customMapData.ultrasonicObstacles.length > 0) {
-            this.customMapData.ultrasonicObstacles.forEach(obs => {
-                const ox = Number(obs.x), oy = Number(obs.y), or = Number(obs.radius) || 30;
-                if (!Number.isFinite(ox) || !Number.isFinite(oy)) return;
-                this.ctx.fillStyle = 'rgba(220, 0, 0, 0.5)';
-                this.ctx.strokeStyle = '#cc0000';
-                this.ctx.lineWidth = 2;
-                this.ctx.beginPath();
-                this.ctx.arc(ox, oy, or, 0, Math.PI * 2);
-                this.ctx.fill();
-                this.ctx.stroke();
-                this.ctx.fillStyle = '#fff';
-                this.ctx.font = 'bold 14px Arial';
-                this.ctx.textAlign = 'center';
-                this.ctx.textBaseline = 'middle';
-                this.ctx.fillText('S', ox, oy);
-            });
-        }
-        
-        if (this.customMapData && this.customMapData.lamps && Array.isArray(this.customMapData.lamps) && this.customMapData.lamps.length > 0) {
-            this.customMapData.lamps.forEach(lamp => {
-                const lx = Number(lamp.x), ly = Number(lamp.y), lr = Math.min(18, (Number(lamp.radius) || 120) / 5);
-                if (!Number.isFinite(lx) || !Number.isFinite(ly)) return;
-                this.ctx.fillStyle = '#ffff00';
-                this.ctx.strokeStyle = '#cc9900';
-                this.ctx.lineWidth = 2;
-                this.ctx.beginPath();
-                this.ctx.arc(lx, ly, lr, 0, Math.PI * 2);
-                this.ctx.fill();
-                this.ctx.stroke();
             });
         }
         
@@ -849,9 +774,8 @@ except Exception as e:
             <div class="sensor-row"><span>Линия L:</span> <strong>${s.lineLeft}</strong></div>
             <div class="sensor-row"><span>Линия C:</span> <strong>${s.lineCenter}</strong></div>
             <div class="sensor-row"><span>Линия R:</span> <strong>${s.lineRight}</strong></div>
-            <div class="sensor-panel-section">Расстояние / свет</div>
-            <div class="sensor-row"><span>Сонар:</span> <strong>${typeof s.ultrasonic === 'number' ? s.ultrasonic.toFixed(1) : s.ultrasonic} см</strong></div>
-            <div class="sensor-row"><span>Фоторезистор:</span> <strong>${s.photoresistor}</strong></div>
+            <div class="sensor-panel-section">Расстояние</div>
+            <div class="sensor-row"><span>Sharp:</span> <strong>${typeof s.sharp === 'number' ? s.sharp.toFixed(1) : s.sharp} см</strong></div>
             <div class="sensor-panel-section">Энкодеры</div>
             <div class="sensor-row"><span>Левый:</span> <strong>${Math.round(s.leftEncoder ?? 0)}</strong></div>
             <div class="sensor-row"><span>Правый:</span> <strong>${Math.round(s.rightEncoder ?? 0)}</strong></div>
@@ -911,7 +835,7 @@ except Exception as e:
         ];
         
         sensors.forEach(s => {
-            this.ctx.fillStyle = s.val > 2000 ? '#ff0000' : '#00ff00';
+            this.ctx.fillStyle = s.val > 2000 ? '#00ff00' : '#ff0000';
             this.ctx.beginPath();
             this.ctx.arc(s.x, s.y, 3, 0, Math.PI * 2);
             this.ctx.fill();

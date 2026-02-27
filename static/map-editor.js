@@ -1,18 +1,15 @@
 /**
- * Редактор карты: черные полосы (линия), зоны детекции камеры GREEN / RED (STOP) / RIGHT
+ * Редактор карты: черные полосы (линия), зоны детекции камеры GO / STOP / LEFT / RIGHT
  * Размер карты должен совпадать с симулятором (MAP_WIDTH x MAP_HEIGHT).
  */
 (function() {
     const MAP_WIDTH = 800;   // размер зоны симуляции (должен совпадать с simulator.js)
     const MAP_HEIGHT = 600;
     const ZONE_RADIUS = 25;
-    const LAMP_INFLUENCE_RADIUS = 120; // радиус влияния на фоторезистор (пиксели)
 
     let canvas, ctx;
     let mapImageData = null;  // только черное/белое (полоса)
-    let cameraZones = [];    // { x, y, radius, sign: "GREEN" | "STOP" | "RIGHT" }
-    let lamps = [];          // { x, y, radius } — лампочки для фоторезистора
-    let ultrasonicObstacles = []; // { x, y, radius } — препятствия для сонара
+    let cameraZones = [];    // { x, y, radius, sign: "GO" | "STOP" | "LEFT" | "RIGHT" }
     let startPosition = null; // { x, y, angle } — начальная позиция робота
     let currentTool = 'pencil';
     let brushSize = 12;
@@ -40,8 +37,6 @@
             d[i + 3] = 255;
         }
         cameraZones = [];
-        lamps = [];
-        ultrasonicObstacles = [];
         startPosition = null;
     }
 
@@ -111,62 +106,33 @@
         ctx.putImageData(mapImageData, 0, 0);
         // Зоны поверх (только для отображения)
         cameraZones.forEach(z => {
-            if (z.sign === 'GREEN') {
+            if (z.sign === 'GO') {
                 ctx.fillStyle = 'rgba(0, 200, 0, 0.4)';
                 ctx.strokeStyle = '#00aa00';
             } else if (z.sign === 'STOP') {
                 ctx.fillStyle = 'rgba(220, 0, 0, 0.4)';
                 ctx.strokeStyle = '#cc0000';
+            } else if (z.sign === 'LEFT') {
+                ctx.fillStyle = 'rgba(0, 100, 255, 0.4)';
+                ctx.strokeStyle = '#0066cc';
             } else if (z.sign === 'RIGHT') {
                 ctx.fillStyle = 'rgba(255, 200, 0, 0.4)';
                 ctx.strokeStyle = '#cc9900';
+            } else {
+                ctx.fillStyle = 'rgba(128, 128, 128, 0.4)';
+                ctx.strokeStyle = '#666';
             }
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.arc(z.x, z.y, z.radius || ZONE_RADIUS, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
-            if (z.sign === 'RIGHT') {
-                ctx.fillStyle = '#000';
-                ctx.font = 'bold 20px Arial';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText('R', z.x, z.y);
-            }
-        });
-        // Лампочки (влияют на фоторезистор)
-        lamps.forEach(l => {
-            const lx = Number(l.x), ly = Number(l.y), lr = Math.min(20, (l.radius || LAMP_INFLUENCE_RADIUS) / 4);
-            if (!Number.isFinite(lx) || !Number.isFinite(ly)) return;
-            ctx.fillStyle = '#ffff00';
-            ctx.strokeStyle = '#cc9900';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(lx, ly, lr, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            ctx.fillStyle = '#333';
-            ctx.font = 'bold 12px Arial';
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 20px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('L', lx, ly);
-        });
-        // Препятствия сонара (красные круги)
-        ultrasonicObstacles.forEach(obs => {
-            const ox = Number(obs.x), oy = Number(obs.y), or = Number(obs.radius) || 30;
-            if (!Number.isFinite(ox) || !Number.isFinite(oy)) return;
-            ctx.fillStyle = 'rgba(220, 0, 0, 0.6)';
-            ctx.strokeStyle = '#cc0000';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(ox, oy, or, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 14px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('S', ox, oy);
+            const label = z.sign === 'RIGHT' ? 'R' : z.sign === 'STOP' ? 'S' : z.sign === 'GO' ? 'G' : z.sign === 'LEFT' ? 'L' : z.sign || '?';
+            ctx.fillText(label, z.x, z.y);
         });
         // Стартовая позиция робота
         if (startPosition) {
@@ -213,37 +179,19 @@
                 redraw();
                 return;
             }
-            const lampIndex = lamps.findIndex(l => Math.hypot(x - l.x, y - l.y) < 25);
-            if (lampIndex >= 0) {
-                lamps.splice(lampIndex, 1);
-                redraw();
-                return;
-            }
-            const ultrasonicIndex = ultrasonicObstacles.findIndex(obs => Math.hypot(x - obs.x, y - obs.y) < (obs.radius || 30));
-            if (ultrasonicIndex >= 0) {
-                ultrasonicObstacles.splice(ultrasonicIndex, 1);
-                redraw();
-                return;
-            }
             isDrawing = true;
             lastX = x;
             lastY = y;
             eraseAtPoint(x, y);
             redraw();
-        } else if (currentTool === 'green' || currentTool === 'red' || currentTool === 'right') {
-            const sign = currentTool === 'green' ? 'GREEN' : currentTool === 'red' ? 'STOP' : 'RIGHT';
+        } else if (currentTool === 'go' || currentTool === 'stop' || currentTool === 'left' || currentTool === 'right') {
+            const sign = currentTool === 'go' ? 'GO' : currentTool === 'stop' ? 'STOP' : currentTool === 'left' ? 'LEFT' : 'RIGHT';
             cameraZones.push({ x, y, radius: ZONE_RADIUS, sign });
             redraw();
         } else if (currentTool === 'start') {
             const angleInput = document.getElementById('startAngle');
             const angle = angleInput ? Math.max(0, Math.min(360, parseInt(angleInput.value, 10) || 90)) : 90;
             startPosition = { x, y, angle };
-            redraw();
-        } else if (currentTool === 'lamp') {
-            lamps.push({ x, y, radius: LAMP_INFLUENCE_RADIUS });
-            redraw();
-        } else if (currentTool === 'ultrasonic') {
-            ultrasonicObstacles.push({ x, y, radius: 30 });
             redraw();
         }
     }
@@ -304,25 +252,21 @@
         window.customMapData = {
             imageData: imageDataCopy,
             cameraZones: cameraZones.map(z => ({ x: z.x, y: z.y, radius: z.radius || ZONE_RADIUS, sign: z.sign })),
-            lamps: lamps.map(l => ({ x: l.x, y: l.y, radius: l.radius || LAMP_INFLUENCE_RADIUS })),
-            ultrasonicObstacles: ultrasonicObstacles.map(obs => ({ x: obs.x, y: obs.y, radius: obs.radius || 30 })),
             startPosition: startPosition ? { x: startPosition.x, y: startPosition.y, angle: startPosition.angle } : null
         };
-        // Отмечаем, что карта выбрана (для main.js)
-        window.mapSelected = true;
+        window.mapJustSavedFromEditor = true;
+        if (typeof window.updateSimulatorButton === 'function') window.updateSimulatorButton();
         // Останавливаем симулятор, если он запущен, но не удаляем его полностью
         // Это позволит обновить карту при следующем запуске
         if (window.simulator) {
             window.simulator.stop();
-            // Обновляем карту в существующем симуляторе, если метод доступен
             if (window.simulator.updateMap && typeof window.simulator.updateMap === 'function') {
                 window.simulator.updateMap(window.customMapData);
             } else {
-                // Если метод недоступен, пересоздаем симулятор при следующем запуске
                 window.simulator = null;
             }
         }
-        alert('Карта сохранена! Запустите симулятор — будет использована ваша карта.');
+        alert('Карта сохранена! Нажмите «Запустить симулятор» для применения.');
     }
 
     /** Формат файла карты v1: version, mapWidth, mapHeight, imageDataBase64, cameraZones, startPosition */
@@ -349,8 +293,6 @@
             mapHeight: MAP_HEIGHT,
             imageDataBase64: base64,
             cameraZones: cameraZones.map(z => ({ x: z.x, y: z.y, radius: z.radius || ZONE_RADIUS, sign: z.sign })),
-            lamps: lamps.map(l => ({ x: l.x, y: l.y, radius: l.radius || LAMP_INFLUENCE_RADIUS })),
-            ultrasonicObstacles: ultrasonicObstacles.map(obs => ({ x: obs.x, y: obs.y, radius: obs.radius || 30 })),
             startPosition: startPosition ? { x: startPosition.x, y: startPosition.y, angle: startPosition.angle } : null
         };
     }
@@ -435,40 +377,25 @@
                 const len = Math.min(raw.length, mapImageData.data.length);
                 for (let i = 0; i < len; i++) mapImageData.data[i] = raw[i];
 
+                const mapSign = (s) => (s === 'GREEN' ? 'GO' : s === 'STOP' || s === 'LEFT' || s === 'RIGHT' ? s : 'GO');
                 cameraZones = (payload.cameraZones && Array.isArray(payload.cameraZones))
                     ? payload.cameraZones.map(z => ({
                         x: Number(z.x) || 0,
                         y: Number(z.y) || 0,
                         radius: Number(z.radius) > 0 ? Number(z.radius) : ZONE_RADIUS,
-                        sign: z.sign === 'GREEN' || z.sign === 'STOP' || z.sign === 'RIGHT' ? z.sign : 'GREEN'
+                        sign: mapSign(z.sign)
                     }))
                     : [];
                 const sp = payload.startPosition;
                 startPosition = (sp && typeof sp.x === 'number' && typeof sp.y === 'number')
                     ? { x: sp.x, y: sp.y, angle: Number(sp.angle) || 90 }
                     : null;
-                lamps = (payload.lamps && Array.isArray(payload.lamps))
-                    ? payload.lamps.map(l => ({
-                        x: Number(l.x) || 0,
-                        y: Number(l.y) || 0,
-                        radius: Number(l.radius) > 0 ? Number(l.radius) : LAMP_INFLUENCE_RADIUS
-                    }))
-                    : [];
-                ultrasonicObstacles = (payload.ultrasonicObstacles && Array.isArray(payload.ultrasonicObstacles))
-                    ? payload.ultrasonicObstacles.map(obs => ({
-                        x: Number(obs.x) || 0,
-                        y: Number(obs.y) || 0,
-                        radius: Number(obs.radius) > 0 ? Number(obs.radius) : 30
-                    }))
-                    : [];
 
                 const imageDataCopy = ctx.createImageData(MAP_WIDTH, MAP_HEIGHT);
                 imageDataCopy.data.set(mapImageData.data);
                 window.customMapData = {
                     imageData: imageDataCopy,
                     cameraZones: cameraZones.map(z => ({ x: z.x, y: z.y, radius: z.radius || ZONE_RADIUS, sign: z.sign })),
-                    lamps: lamps.map(l => ({ x: l.x, y: l.y, radius: l.radius || LAMP_INFLUENCE_RADIUS })),
-                    ultrasonicObstacles: ultrasonicObstacles.map(obs => ({ x: obs.x, y: obs.y, radius: obs.radius || 30 })),
                     startPosition: startPosition ? { x: startPosition.x, y: startPosition.y, angle: startPosition.angle } : null
                 };
                 // Отмечаем, что карта выбрана (для main.js)
@@ -477,16 +404,14 @@
                 // Это позволит обновить карту при следующем запуске
                 if (window.simulator) {
                     window.simulator.stop();
-                    // Обновляем карту в существующем симуляторе, если метод доступен
                     if (window.simulator.updateMap && typeof window.simulator.updateMap === 'function') {
                         window.simulator.updateMap(window.customMapData);
                     } else {
-                        // Если метод недоступен, пересоздаем симулятор при следующем запуске
                         window.simulator = null;
                     }
                 }
                 redraw();
-                alert('Карта загружена из файла (версия ' + ver + '). Можно запустить симулятор.');
+                alert('Карта загружена (версия ' + ver + '). Нажмите «Запустить симулятор» для применения.');
             } catch (err) {
                 alert('Ошибка загрузки карты: ' + (err.message || String(err)));
             }
